@@ -32,19 +32,6 @@
       })
     }
     loadPage();
-    /* banner functions */
-    // function clearBanner() {
-    //   $banner.children('a').remove();
-    // }
-    function setLink( text, url ) {
-
-    }
-    /* dashboard functions */
-    // function clearDashboard() {
-    //   $dashboard.children().remove();
-    // }
-
-
 
     function renderBannerNotLoggedIn() {
       $banner.children('h1')
@@ -79,15 +66,84 @@
           window.close();
         })
       $.post('/timeToFetchFollowers', function( response, status ) {
-        console.log( response )
+        userProfile.followers = response.followers;
         $.get('/analysis', function( response, status ) {
-          console.log( response );
+          $banner.children('span')
+            .text('Alright! Check that out!');
+            userProfile.analytics = response.data;
+            renderFollowerDemographics();
         })
       })
-
     }
 
-    function renderFriendsDemographics() {
+    function displayThisFollower( screen_name ) {
+      console.log( screen_name );
+    }
+
+    function generateSummary() {
+      // races
+      // ages
+      // genders
+    }
+
+    function constructFollower( follower, analytics ) {
+      var $div = $( '<div class="follower"></div>' )
+            .attr( 'id', follower.screen_name );
+
+      var $profile = $( '<img/>' )
+            .attr( 'src', follower.profile_image_url );
+
+      var $name = $( '<span/>')
+            .text( follower.name );
+
+      var $linkToProfile = $( '<a/>' )
+            .attr( 'href', 'https://twitter.com/' + follower.screen_name );
+
+      var $viewMore = $( '<button/>' )
+            .text( 'View Stats' )
+            .click( function( e ) {
+              e.preventDefault();
+              displayThisFollower( follower.screen_name );
+            });
+      var $rightHalf = $( '<div class="follower-panel"></div>' );
+
+      $linkToProfile.append( $profile );
+      $div.append( $linkToProfile );
+      $rightHalf.append( $name );
+      if ( !analytics.face || analytics.face.length === 0 ) {
+        $viewMore = $('<span class="unfound">No face found</span>');
+      }
+      $rightHalf.append( $viewMore );
+      $div.append( $rightHalf );
+      return $div;
+    }
+
+
+    function renderFollowerDemographics() {
+      /* recorrelating the data from face++ and twitter,
+        this code is a patch-up for a design flaw on the server
+        where the two sets of data are collected independently. */
+      userProfile.combinedData = {};
+      for ( var i in userProfile.analytics ) {
+        userProfile
+          .combinedData[ userProfile.analytics[ i ]
+            .screen_name ] = { analytics : userProfile.analytics[ i ] }
+      }
+      for ( var j in userProfile.followers ) {
+        userProfile
+          .combinedData[ userProfile.followers[ j ]
+            .screen_name ].follower = userProfile.followers[ j ];
+      }
+      /* append summary */
+
+
+      /* construct boxes for each follower */
+      for (var k in userProfile.combinedData ) {
+        var followerBox = constructFollower( 
+            userProfile.combinedData[ k ].follower,
+            userProfile.combinedData[ k ].analytics );
+        $dashboard.append(followerBox);
+      }
 
     }
 
@@ -96,12 +152,10 @@
   </script>
   <style type="text/css">
     html, body { height: 99%; width: 100%; margin: 0px; padding: 0px;}
-    * {
-      padding: 0px;
-      margin: 0px;
-    }
+
 
     body {
+      font-family: 'arial';
     }
 
     #banner {
@@ -110,7 +164,7 @@
     }
     #dashboard {
       margin-top: 4%;
-      height:     64%;
+      min-height: 64%;
     }
     #footer {
       margin-top: 5%;
@@ -119,6 +173,30 @@
 
     .section {
       background-color: #BED0FF;
+    }
+
+    .follower {
+      display: inline-block;
+      width: 400px;
+      height: 150px;
+      margin: 15px;
+      background-color: rgba(255,255,255,0.1);
+    }
+    .follower img {
+      width: 150px;
+      height: 150px;
+    }
+    .follower-panel {
+      width: 250px;
+      height: 150px;
+      display: inline-block;
+      float: right;
+    }
+    .follower-panel button {
+      display: block;
+    }
+    .follower-panel span {
+      display: block;
     }
   </style>
 </head>
