@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Let's be Analytical</title>
+  <script type="text/javascript" src="/js/jquery-1.11.1.min.js"></script>
+  <script type="text/javascript">
+  $(document).ready(function() {
+
+    /* commonly used jquery objects */
+    var $banner    = $('#banner');
+    var $dashboard = $('#dashboard');
+    
+    var userProfile = null;
+
+    /* function to check for user profile data on the server,
+      if it exists return the profile */
+    function getProfile( done ) {
+      $.get('profileData', function( response, success ) {
+        if ( success === "success" ) {
+          userProfile = response.data || null;
+          done();
+        }
+        /* if not successful nothing happens */
+      })
+    }
+
+    function loadPage() {
+      getProfile(function() {
+        console.log(userProfile)
+        if ( userProfile === null ) { renderBannerNotLoggedIn(); }
+        else { renderBannerLoggedIn(); }
+      })
+    }
+    loadPage();
+    /* banner functions */
+    // function clearBanner() {
+    //   $banner.children('a').remove();
+    // }
+    function setLink( text, url ) {
+
+    }
+    /* dashboard functions */
+    // function clearDashboard() {
+    //   $dashboard.children().remove();
+    // }
+
+
+
+    function renderBannerNotLoggedIn() {
+      $banner.children('h1')
+        .text('You are not logged in.');
+      $banner.children('span')
+        .text('I really am sorry you have to authenticate. Don\'t worry, what comes next is totally worth it...');
+      $banner.children('a')
+        .attr('href', '/auth/twitter')
+        .text('log in with twitter')
+        .click(function(e) {
+          e.preventDefault();
+          var popup = window.open('/auth/twitter',"");
+          window.onfocus = function(e) {
+            window.onfocus = null;
+            loadPage();
+          }
+        });
+    }
+
+    function renderBannerLoggedIn() {
+      console.log('render logged in')
+      $banner.children('h1')
+        .text('Welcome ' + userProfile.name)
+      $banner.children('span')
+        .text('Just a sec, fetching your follower\'s profile pictures...');
+      $banner.children('a')
+        .attr('href', '/logout')
+        .text('logout')
+        .click(function(e) {
+          e.preventDefault();
+          // ajax call to kill session
+          window.close();
+        })
+      $.post('/timeToFetchFollowers', function(response, status) {
+        console.log(response)
+      })
+    }
+
+    function renderFriendsDemographics() {
+
+    }
+
+
+  })
+  </script>
+  <style type="text/css">
+    html, body { height: 99%; width: 100%; margin: 0px; padding: 0px;}
+    * {
+      padding: 0px;
+      margin: 0px;
+    }
+
+    body {
+    }
+
+    #banner {
+      margin-top: 1%;
+      height:     10%;
+    }
+    #dashboard {
+      margin-top: 4%;
+      height:     64%;
+    }
+    #footer {
+      margin-top: 5%;
+      height:     5%;
+    }
+
+    .section {
+      background-color: #BED0FF;
+    }
+  </style>
+</head>
+<body>
+  <div id="banner" class="section">
+    <h1></h1>
+    <a href=""></a>
+    <span></span>
+  </div>
+  <div id="dashboard" class="section">
+  </div>
+  <div id="footer" class="section"></div>
+</body>
+</html>
