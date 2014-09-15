@@ -16,7 +16,11 @@ var cookieParser = require( 'cookie-parser'),
 var morgan = require( 'morgan' );
 
 /* tools */
-var async = require('async');
+var async   = require('async'),
+    request = require('request'),
+    facepp  = require('./facepp.js'),
+    fs      = require('fs');
+
 
 /* database interaction, for convenience just use Mongoose & Mongo */
 var mongoose = require( 'mongoose' );
@@ -42,6 +46,7 @@ mongoose.connect( 'mongodb://localhost/test', function( err ) {
 var Schema = mongoose.Schema;
 
 var UserSchema = new Schema({
+  twitterId : Number,
   twitterProfile: Schema.Types.Mixed, /* generic twitter data */
   twitterTokens: {
     accessToken: String,
@@ -54,13 +59,14 @@ var UserSchema = new Schema({
 
 UserSchema.statics.findOrCreateUser = function( profile, done ) {
   var User = this;
-  User.findOne( { twitterProfile: { id: profile.id } },
+  User.findOne( { twitterId: profile.id },
    function( error, userDoc ) {
     if (error) { throw( "failed to find/create user", error ); }
     if (userDoc === null) {
       userDoc = new User();
     }
     userDoc.twitterProfile = profile;
+    userDoc.twitterId = profile.id;
     userDoc.markModified('twitterProfile');
     done (null, userDoc); 
   });
@@ -197,7 +203,6 @@ app.post( '/timeToFetchFollowers',
   })
 
   if ( Date.now() - request.user.lastFollowerUpdate < 1000*60*5) {
-    console.log()
     response.json( { 'followers': request.user.followers } );
     return;
   }
@@ -208,7 +213,6 @@ app.post( '/timeToFetchFollowers',
   var followers = [];
   async.series([
       function( done ) {
-        console.log('beginning follower list search')
         T.get('followers/ids',
         { 
           screen_name: request.user.twitterProfile.screen_name
@@ -220,7 +224,6 @@ app.post( '/timeToFetchFollowers',
         });
       },
       function( done ) {
-        console.log('beginning lookup')
         T.get('users/lookup',
         {
           user_id: followerIds,
@@ -239,7 +242,6 @@ app.post( '/timeToFetchFollowers',
             request.user._id,
             followers,
             function( err, userDoc ) {
-              console.log( followers );
               response.json( { 'followers': followers } );
               done();
             });
@@ -248,10 +250,115 @@ app.post( '/timeToFetchFollowers',
     ]);
 })
 
+function downloadImage(path, follower, callback){
+  var url = follower.profile_image_url;
+  var type = '.' + url.match(/\.(jpg|png|jpeg)$/)[1];
+  var filename = path + follower.screen_name + type;
+  request.head(url, function( err ){
+    if (err) { throw( "problem downloading image", err ); }
+    request(  url )
+      .pipe( fs.createWriteStream( filename ) )
+      .on( 'close', function() {  
+        callback();
+      })
+      .on( 'error', function() {
+        console.log('writing image failed for', follower.screen_name );
+      })
+  });
+
+};
+
+function scrapeImages( path, followers, done ) {
+  var count = followers.length;
+  for (var i = 0; i < followers.length; i++) {
+    downloadImage( path, followers[i], function() {
+      count--;
+      if (count === 0) {
+        done();
+      }
+    })
+  }
+}
+
+function deleteDirIfExists( path, done ) {
+  fs.exists( path, function( bool ) {
+        if (bool === true) {
+          fs.readdir( path, function( err, files ) {
+            if ( err ) { throw( "error reading files to clean imageCache", err ); }
+            var count = files.length;
+            for (var i = 0; i < files.length; i++) {
+              fs.unlink( path + files[i], function( err ) {
+                if ( err ) { throw( "error deleting file in cleaning imageCache", err ); }
+                count--;
+                if (count === 0) {
+                  fs.rmdir( path,function( err ) {
+                    if ( err ) throw( "error deleting cleaned directory when cleaning imageCach", err );
+                    done();
+                  })
+                }
+              })
+            }
+          })
+        } 
+        else {
+          done();
+        }
+      })
+}
+
+function analyzeFollowerProfileImages( user, finished ) {
+  var imageCacheDirPath = __dirname + '/imageCache/' + user._id + '/';
+  var analysis = [];
+  async.series([
+    function( done ) {
+      deleteDirIfExists( imageCacheDirPath, function() {
+        done();
+      });
+    },
+    function( done ) {
+      fs.mkdir( imageCacheDirPath,
+        function( err ) {
+          if ( err ) { throw( "failed to make user's image cache directory", err ); }
+          done();
+        });
+    },
+    function( done ) {
+      scrapeImages( imageCacheDirPath, user.followers, function() {
+        done();
+      });
+    },
+    function( done ) {
+      fs.readdir( imageCacheDirPath, function( err, files ) {
+        if ( err ) { throw( "problem reading directory of image files to analyze", err ); }
+        var count = files.length;
+        for ( var i in files ) {
+          facepp.detectFace( imageCacheDirPath + files[i], function( err, res, data ) {
+            analysis.push( data )
+            count--;
+            if (count === 0) {
+              done();
+            }
+          })
+        }
+      })
+    },
+    function( done ) {
+      deleteDirIfExists( imageCacheDirPath, function() {
+        done();
+      });
+    }
+  ], function() {
+    finished( analysis );
+  });
+}
+
 app.get( '/analysis',
  ensureLoggedIn,
   function( request, response ) {
-
+    analyzeFollowerProfileImages( request.user,
+      function( analysis ) {
+        response.json( { data: analysis } );
+      });
 })
 
 /* start application */

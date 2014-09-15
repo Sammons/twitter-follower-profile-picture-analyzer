@@ -78,9 +78,13 @@
           // ajax call to kill session
           window.close();
         })
-      $.post('/timeToFetchFollowers', function(response, status) {
-        console.log(response)
+      $.post('/timeToFetchFollowers', function( response, status ) {
+        console.log( response )
+        $.get('/analysis', function( response, status ) {
+          console.log( response );
+        })
       })
+
     }
 
     function renderFriendsDemographics() {
