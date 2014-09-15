@@ -232,10 +232,11 @@ app.post( '/timeToFetchFollowers',
         function ( err, data, res) {
           for (var i in data) {
             var follower = {};
-            follower.id = data[i].id;
-            follower.profile_image_url = data[i].profile_image_url;
-            follower.name = data[i].name;
-            follower.screen_name = data[i].screen_name;
+            follower.id                = data[i].id;
+            follower.profile_image_url = data[i].profile_image_url.replace('_normal','');
+            follower.name              = data[i].name;
+            follower.screen_name       = data[i].screen_name;
+
             followers.push(follower);
           }
           User.updateFollowers( 
@@ -306,6 +307,8 @@ function deleteDirIfExists( path, done ) {
       })
 }
 
+
+
 function analyzeFollowerProfileImages( user, finished ) {
   var imageCacheDirPath = __dirname + '/imageCache/' + user._id + '/';
   var analysis = [];
@@ -331,16 +334,22 @@ function analyzeFollowerProfileImages( user, finished ) {
       fs.readdir( imageCacheDirPath, function( err, files ) {
         if ( err ) { throw( "problem reading directory of image files to analyze", err ); }
         var count = files.length;
+        var faceDetections = []
         for ( var i in files ) {
-          facepp.detectFace( imageCacheDirPath + files[i], function( err, res, data ) {
-            analysis.push( data )
-            count--;
-            if (count === 0) {
-              done();
-            }
-          })
+          var path = imageCacheDirPath + files[i];
+          faceDetections.push( ( function( path ) {
+            return function( finished ) {
+              facepp.detectFace( path, function( err, res, data ) {
+                analysis.push( data );
+                finished();
+              });
+            };
+          })( path ));
         }
-      })
+        async.series( faceDetections, function() {
+          done();
+        })
+      });
     },
     function( done ) {
       deleteDirIfExists( imageCacheDirPath, function() {
