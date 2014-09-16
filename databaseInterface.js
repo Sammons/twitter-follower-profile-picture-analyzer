@@ -3,11 +3,13 @@ var mongoose = require( 'mongoose' );
 
 /* secrets and tokens for applications, would be for database if weren't just a local thing */
 var credentials = require( './credentials.js' );
+
+/* constants, has the connection string for mongo */
 var config = require( './config.js' );
 
 var Schema = mongoose.Schema;
 
-/* the world of this app revolves around the user document,
+/* the world of this app revolves around this user document,
   pretty much everything is stored here. */
 var UserSchema = new Schema({
   twitterProfile: Schema.Types.Mixed, /* generic twitter data blob */
@@ -24,7 +26,8 @@ var UserSchema = new Schema({
 })
 
 
-UserSchema.statics.updateOrCreateUser = function( profile, done ) {
+/* class level method for upserting a user with basic details */
+UserSchema.statics.updateTokensAndProfileOrCreateUser = function( user, done ) {
   var User = this;
 
   /* Find */
@@ -38,12 +41,14 @@ UserSchema.statics.updateOrCreateUser = function( profile, done ) {
     if (userDoc === null) {
       userDoc = new User();
     }
-    /* initialize/update */
-    userDoc.twitterProfile = profile;
-    userDoc.twitterId = profile.id;
-    userDoc.markModified('twitterProfile');/* required for mixed types */
 
-    /* return */
+    /* initialize/update just tokens and profile */
+    userDoc.twitterProfile = user.twitterProfile;
+    userDoc.tokens         = user.tokens;
+
+    /* markmodified required for mixed types */
+    userDoc.markModified( 'twitterProfile' );
+    
     done (null, userDoc); 
   });
 
@@ -51,14 +56,20 @@ UserSchema.statics.updateOrCreateUser = function( profile, done ) {
 
 UserSchema.methods.updateFollowers = function( followers, done) {
   var userDoc = this;
-    userDoc.followers = followers;
-    userDoc.markModified( 'followers' );
-    userDoc.lastFollowerUpdate = Date.now();
-    userDoc.save( function( err ) {
-      done ( err, userDoc ); 
-    });
+  userDoc.followers = followers;
+
+  /* markmodified required for mixed types */
+  userDoc.markModified( 'followers' );
+
+  /* ms timestamp this update */
+  userDoc.lastFollowerUpdate = Date.now();
+  
+  userDoc.save( function( err ) {
+    done ( err, userDoc ); 
+  });
 }
 
+/* expose the user model */
 module.exports.user = mongoose.model( 'user', UserSchema );
 
 /* hook up! */

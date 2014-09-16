@@ -47,13 +47,18 @@ passport.deserializeUser(function(id, done) {
   so this has upsert functionality. */
 function checkInTwitterUser(accessToken, tokenSecret, profile, done) {
 
-  db.user.updateOrCreateUser( profile , function( err, userDoc ) {
-    userDoc.twitterTokens.accessToken = accessToken;
-    userDoc.twitterTokens.tokenSecret = tokenSecret;
-    userDoc.save(function(error) {
-      done( error, userDoc);
+  db.user.updateTokensAndProfileOrCreateUser( { 
+      'twitterProfile' : profile,
+      'tokens' : {
+        'accessToken' : accessToken,
+        'tokenSecret' : tokenSecret
+      } 
+    },
+    function( err, userDoc ) {
+      userDoc.save(function(error) {
+        done( error, userDoc);
+      });
     });
-  })
 
 }
 
