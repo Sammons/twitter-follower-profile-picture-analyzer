@@ -13,19 +13,22 @@ var config = require('./config.js');
 
 function createDirIfNotExistent( path, finished ) {
   var exists = fs.existsSync(path); /* TODO MAKE ASYNC */
-  fs.mkdir( path, finished );
+  if (!exists) fs.mkdir( path, finished );
 }
 
 function downloadImage(path, follower, callback){
+  console.log('downloading image')
   var url = follower.profile_image_url;
   var type = '.' + url.match(/\.(jpg|png|jpeg)$/)[1];
   var filename = path + follower.id + type;
+  follower.imagePath = filename;
+  if (fs.existsSync(filename)) return callback( filename, follower );
+  console.log('filename')
   request.head(url, function( err ){
     if (err) { throw( "problem downloading image", err ); }
     request(  url )
       .pipe( fs.createWriteStream( filename ) )
       .on( 'close', function() {  
-        follower.imagePath = filename;
         callback( filename, follower );
       })
       .on( 'error', function() {
@@ -36,24 +39,24 @@ function downloadImage(path, follower, callback){
 };
 
 function processImages( path, followers, done ) {
+  console.log('processing images', arguments)
   var count = followers.length;
   for (var i = 0; i < followers.length; i++) {
     downloadImage( path, followers[i],
-     function( filename, follower ) {
+     function( filename, thisfollower ) {
       facepp.detectFace( filename,
        function( err, res, data ) {
-          follower.data = data;
-          finished();
+          thisfollower.data = data;
           count--;
           if (count === 0) {
-            done();
+            done( followers );
           }
         });
     })
   }
 }
 
-function processFollowers( followers, finished ) {
+function processFollowers( user, followers, finished ) {
   var imageCacheDirPath = __dirname + '/imageCache/' + user._id + '/';
   async.waterfall([
       function( done ) { 
@@ -63,6 +66,7 @@ function processFollowers( followers, finished ) {
         }); 
       },
       function( done ) {
+        console.log('begin processing images <pre>')
         processImages( imageCacheDirPath, followers, function() {
           done( followers );
         });
@@ -117,38 +121,38 @@ function twitGetFollowerIds( twit, user, done ) {
 
 /* asks twitter for fresh follower data, saves to db before returning */
 function refreshAllFollowerData( user, finished ) {
-  var T = new Twit({
-      consumer_key:         credentials.key
-    , consumer_secret:      credentials.secret
-    , access_token:         user.twitterTokens.accessToken
-    , access_token_secret:  user.twitterTokens.tokenSecret
-  })
+  console.log( credentials )
 
   if ( Date.now() - user.lastFollowerUpdate < config.ageToRetireFollowerCache ) {
     finished( user.followers );
     return;
   }
+  var T = new Twit({
+      consumer_key:         credentials.key
+    , consumer_secret:      credentials.secret
+    , access_token:         user.tokens.accessToken
+    , access_token_secret:  user.tokens.tokenSecret
+  })
 
   /* if no recent followerlist in the db, then proceed
     to find them and put it in the database. */
   var followerIds = null;
-  var followers = [];
   async.waterfall([
       function( done ) {
         twitGetFollowerIds( T, user, function( ids ) {
-          done( null, data.ids );
+          done( null, ids );
         })
       },
       function( ids, done ) {
-        twitLookupFollowers( T, user, ids, function() {
-          done( followers );
+        twitLookupFollowers( T, user, ids, function( followers ) {
+          finished( followers );
         })  
       }
-    ], finished );
+    ] );
 }
 
 /* gathers fresh twitter data, then scrapes images and feeds through facepp */
-function analyzeFollowerProfileImages( user, done ) {
+function analyzeFollowerProfileImages( user, finished ) {
   try {
     async.waterfall([
         function( done ) {
@@ -159,15 +163,18 @@ function analyzeFollowerProfileImages( user, done ) {
           })
         },
         function( followers, done ) {
-          processFollowers( followers, function( followersPostAnalysis ) {
-            user.updateFollowers( followersPostAnalysis, function( err ) {
-              done( err, followersPostAnalysis );
+          processFollowers( user, followers, function( followersPostAnalysis ) {
+            user.updateFollowers( followersPostAnalysis, function( err ) {/* TODO: manage this err */
+              user.dataProcessingInProgress = false;
+              user.save(function( err ){
+                done( err, followersPostAnalysis );
+              });
             })
           })
         }
-      ], done);
+      ], finished);
   } catch (e) {
-    return done( e, null )
+    return finished( e, null )
   }
 }
 

@@ -14,7 +14,7 @@ var Schema = mongoose.Schema;
 var UserSchema = new Schema({
   twitterProfile: Schema.Types.Mixed, /* generic twitter data blob */
   
-  twitterTokens: { /* personalized twitter access */
+  tokens: { /* personalized twitter access */
     accessToken: String,
     tokenSecret: String
   },
@@ -98,10 +98,10 @@ UserSchema.methods.needsToBeAnalyzed = function( done ) {
   User.findById( user._id, function( err, userDoc ) {
     if ( userDoc.lastFaceAnalysis         === 0 
      &&  userDoc.dataProcessingInProgress === false ) {
-      done( true );
+      done( err, true );
     }
     else {
-      done( false );
+      done( err, false );
     }
   })
 }

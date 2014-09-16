@@ -65,15 +65,19 @@
           // ajax call to kill session
           window.close();
         })
-      $.post('/timeToFetchFollowers', function( response, status ) {
-        userProfile.followers = response.followers;
-        $.get('/analysis', function( response, status ) {
-          $banner.children('span')
-            .text('Alright! Check that out!');
-            userProfile.analytics = response.data;
-            renderFollowerDemographics();
+      if (!userProfile.followers) {
+        $.get('/getFollowerData', function( response, status ) {
+          userProfile.followers = response.followers;
+          console.log(userProfile.followers)
+          for (var i in userProfile.followers) {
+            constructFollower( userProfile.followers[i] );
+          }
         })
-      })
+      } else {
+        for (var i in userProfile.followers) {
+          constructFollower( userProfile.followers[i] );
+        }
+      }
     }
 
     function displayThisFollower( screen_name ) {
@@ -90,7 +94,7 @@
 
     }
 
-    function constructFollower( follower, analytics ) {
+    function constructFollower( follower ) {
       var $div = $( '<div class="follower"></div>' )
             .attr( 'id', follower.screen_name );
 

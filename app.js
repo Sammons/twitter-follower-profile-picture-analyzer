@@ -35,12 +35,14 @@ app.get( '/', function( req, res ) {
   if ( req.authenticated ) {
     req.user.needsToBeAnalyzed( function( err, bool ) {
       if ( err ) { 
+       console.log( err )
       /* eat it, this is just an early trigger
        for starting analysis and not critical */
       }
       if ( bool === true ) {
         /* do not pass callback or even bother to wait on this,
            it is a long-running thing */
+           console.log('begin')
         apiAdapter.analyzeFollowerProfileImages( req.user );
       }
     })
@@ -64,13 +66,18 @@ function ensureLoggedIn( req, res, next ) {
 
 /* endpoints for ajax */
 
+/* tells the client if the user is recognized on the server */
+app.get( '/loggedIn',
+  function( request, response ) {
+    response.json({ loggedIn: request.authenticated });
+  })
 
 
 /* returns the json we have for the authenticated user's twitter profile */
 app.get( '/profileData',
   ensureLoggedIn,
    function( request, response ) {
-    response.json( request.user.twitterProfile._json );
+    response.json( { data: request.user.twitterProfile._json } );
 })
 
 /* returns the analyzed follower data if any exists, this can be stale */
