@@ -14,5 +14,7 @@ module.exports.detectFace = function(path, callback) {
   var form = postRequest.form();
   form.append("api_key", credentials.face_key)
   form.append("api_secret", credentials.face_secret)
-  form.append("img", fs.createReadStream( path ), { filename:  path })
+  var filestream = fs.createReadStream( path );
+  filestream.on('error', function() { /* squelch */})
+  form.append("img", filestream , { filename:  path })
 }

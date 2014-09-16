@@ -86,6 +86,10 @@
       // genders
     }
 
+    function getStatsListForFollower( analytics ) {
+
+    }
+
     function constructFollower( follower, analytics ) {
       var $div = $( '<div class="follower"></div>' )
             .attr( 'id', follower.screen_name );
@@ -93,32 +97,23 @@
       var $profile = $( '<img/>' )
             .attr( 'src', follower.profile_image_url );
 
-      var $name = $( '<span/>')
-            .text( follower.name );
-
       var $linkToProfile = $( '<a/>' )
             .attr( 'href', 'https://twitter.com/' + follower.screen_name );
 
-      var $viewMore = $( '<button/>' )
-            .text( 'View Stats' )
-            .click( function( e ) {
-              e.preventDefault();
-              displayThisFollower( follower.screen_name );
-            });
-      var $rightHalf = $( '<div class="follower-panel"></div>' );
+      var $stats = $('<div class="stats"><ul></ul></div>')
 
       $linkToProfile.append( $profile );
       $div.append( $linkToProfile );
-      $rightHalf.append( $name );
-      if ( !analytics.face || analytics.face.length === 0 ) {
-        $viewMore = $('<span class="unfound">No face found</span>');
-      }
-      $rightHalf.append( $viewMore );
-      $div.append( $rightHalf );
+      $div.append( $stats );
       return $div;
     }
 
-
+    function slideover( element ) {
+      $(element).animate({'width':'100px','padding-right':'100px'},100)
+    }
+    function slideback( element ) {
+      $(element).animate({'width':'200px','padding-right':'0px'},100)
+    }
     function renderFollowerDemographics() {
       /* recorrelating the data from face++ and twitter,
         this code is a patch-up for a design flaw on the server
@@ -144,7 +139,13 @@
             userProfile.combinedData[ k ].analytics );
         $dashboard.append(followerBox);
       }
-
+      $('.follower')
+        .mouseenter(function(e) {
+          slideover($(this).children('a').children('img')[0]);
+        })
+        .mouseout(function(e) {
+          slideback($(this).children('a').children('img')[0]);
+        })
     }
 
 
@@ -177,28 +178,16 @@
 
     .follower {
       display: inline-block;
-      width: 400px;
-      height: 150px;
+      width: 200px;
+      height: 200px;
       margin: 15px;
       background-color: rgba(255,255,255,0.1);
     }
     .follower img {
-      width: 150px;
-      height: 150px;
+      width: 200px;
+      height: 200px;
     }
-    .follower-panel {
-      width: 250px;
-      height: 150px;
-      display: inline-block;
-      float: right;
-    }
-    .follower-panel button {
-      display: block;
-    }
-    .follower-panel span {
-      display: block;
-    }
-  </style>
+</style>
 </head>
 <body>
   <div id="banner" class="section">
