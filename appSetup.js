@@ -34,7 +34,7 @@ passport.serializeUser( function( user, done ) {
 });
 
 passport.deserializeUser(function(id, done) {
-  /* standard find the user and pull them out of the db, fare */
+  /* standard find the user and pull them out of the db fare */
   db.user.findById(id, function (err, user) {
     done(err, user);
   });
@@ -87,6 +87,23 @@ module.exports.injectMiddleware = function( app ) {
 
   app.use( passport.initialize() );/* inject the passport middleware here (after session and parsing stuff) */
   app.use( passport.session()    );/* convenient access to session.user data */
+
+  app.use( function( req, res, next ) {
+    /* custom middleware to detect if there is a user session
+      which indicates that they have logged in, assuming no session
+      spoofing going on. 
+      
+      TODO: We could save the last visited time in the serialize
+      method, and require that visitors have their cookie say the same time
+      as the database - otherwise have them re-login. */
+    if (req.user) {
+      req.authenticated = true;
+    } 
+    else {
+      req.authenticated = false;
+    }
+    next();
+  })
 
 }
 

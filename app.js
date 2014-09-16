@@ -51,7 +51,7 @@ app.get( '/', function( request, response ) {
   are spoofing a session and fooling express-session,
   or have authorized with twitter. */
 function ensureLoggedIn( req, res, next ) {
-  if ( !req.user ) {
+  if ( !req.authenticated ) {
     console.log('stopped unauthorized request')
     res.end();
   } else {
@@ -75,64 +75,15 @@ var entitiesToGet = [
     "profile_image_url"
     ]
 
-app.post( '/timeToFetchFollowers',
+app.get( '/getFollowerData',
  ensureLoggedIn,
   function( request, response) {
-  var T = new Twit({
-      consumer_key:         credentials.key
-    , consumer_secret:      credentials.secret
-    , access_token:         request.user.twitterTokens.accessToken
-    , access_token_secret:  request.user.twitterTokens.tokenSecret
-  })
+    apiAdapter.getFollowerData( request.user, function() {
 
-  if ( Date.now() - request.user.lastFollowerUpdate < config.ageToRetireFollowerCache ) {
-    response.json( { 'followers': request.user.followers } );
-    return;
-  }
-
-  /* if no recent followerlist in the db, then proceed
-    to find them and put it in the database. */
-  var followerIds = null;
-  var followers = [];
-  async.series([
-      function( done ) {
-        T.get('followers/ids',
-        { 
-          screen_name: request.user.twitterProfile.screen_name
-        },
-        function (err, data, res) {
-          //TODO handle err
-          followerIds = data.ids;
-          done();
-        });
-      },
-      function( done ) {
-        T.get('users/lookup',
-        {
-          user_id: followerIds,
-          include_entities: false
-        },
-        function ( err, data, res) {
-          for (var i in data) {
-            var follower = {};
-            follower.id                = data[i].id;
-            follower.profile_image_url = data[i].profile_image_url.replace('_normal','');
-            follower.name              = data[i].name;
-            follower.screen_name       = data[i].screen_name;
-
-            followers.push(follower);
-          }
-          request.user.updateFollowers( followers,
-           function( err, userDoc ) {
-              response.json( { 'followers': followers } );
-              done();
-            });           
-        });
-      }
-    ]);
+    });
 })
 
-app.get( '/analysis',
+app.get( '/refreshUserAnalysis',
  ensureLoggedIn,
   function( request, response ) {
     apiAdapter.analyzeFollowerProfileImages( request.user,

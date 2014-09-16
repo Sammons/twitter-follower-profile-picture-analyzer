@@ -111,4 +111,60 @@ function analyzeFollowerProfileImages( user, finished ) {
   });
 }
 
+function getFollowerData( user ) {
+  var T = new Twit({
+      consumer_key:         credentials.key
+    , consumer_secret:      credentials.secret
+    , access_token:         user.twitterTokens.accessToken
+    , access_token_secret:  user.twitterTokens.tokenSecret
+  })
+
+  if ( Date.now() - user.lastFollowerUpdate < config.ageToRetireFollowerCache ) {
+    response.json( { 'followers': user.followers } );
+    return;
+  }
+
+  /* if no recent followerlist in the db, then proceed
+    to find them and put it in the database. */
+  var followerIds = null;
+  var followers = [];
+  async.series([
+      function( done ) {
+        T.get('followers/ids',
+        { 
+          screen_name: user.twitterProfile.screen_name
+        },
+        function (err, data, res) {
+          //TODO handle err
+          followerIds = data.ids;
+          done();
+        });
+      },
+      function( done ) {
+        T.get('users/lookup',
+        {
+          user_id: followerIds,
+          include_entities: false
+        },
+        function ( err, data, res) {
+          for (var i in data) {
+            var follower = {};
+            follower.id                = data[i].id;
+            follower.profile_image_url = data[i].profile_image_url.replace('_normal','');
+            follower.name              = data[i].name;
+            follower.screen_name       = data[i].screen_name;
+
+            followers.push(follower);
+          }
+          user.updateFollowers( followers,
+           function( err, userDoc ) {
+              response.json( { 'followers': followers } );
+              done();
+            });           
+        });
+      }
+    ]);
+}
+
 module.exports.analyzeFollowerProfileImages = analyzeFollowerProfileImages;
+module.exports.getFollowerData = getFollowerData;

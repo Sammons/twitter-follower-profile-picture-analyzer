@@ -18,13 +18,14 @@ var UserSchema = new Schema({
     accessToken: String,
     tokenSecret: String
   },
-  
-  followers: [],              /* empty array notation is mixed type    */
-  lastFollowerUpdate: Number, /* used to avoid abusing twitter         */
-  lastFaceAnalysis: Number,   /* used to avoid abusing Face++          */
-  lastVisited: Number         /* just curious when they were here last */
+  followers                : [],     /* empty array notation is mixed type    */
+  lastFollowerUpdate       : Number  /* used to avoid abusing twitter         */
+  lastFaceAnalysis         : Number  /* used to avoid abusing Face++          */
+  dataProcessingInProgress : {       /* used to avoid double-processing       */
+      type: Boolean, default: false 
+    } 
+  lastVisited              : Number  /* just curious when they were here last */
 })
-
 
 /* class level method for upserting a user with basic details */
 UserSchema.statics.updateTokensAndProfileOrCreateUser = function( user, done ) {
@@ -63,7 +64,7 @@ UserSchema.methods.updateFollowers = function( followers, done) {
 
   /* ms timestamp this update */
   userDoc.lastFollowerUpdate = Date.now();
-  
+
   userDoc.save( function( err ) {
     done ( err, userDoc ); 
   });
