@@ -21,10 +21,6 @@ var async   = require('async'),
     facepp  = require('./facepp.js'),
     fs      = require('fs');
 
-
-/* database interaction, for convenience just use Mongoose & Mongo */
-var mongoose = require( 'mongoose' );
-
 /* secrets and tokens for applications, right now just twitter */
 var credentials = require( './credentials.js' );
 
@@ -37,56 +33,7 @@ var app = express();
 
 
 
-/* prepare database models & operations */
-mongoose.connect( 'mongodb://localhost/test', function( err ) {
-  if ( err ) { throw ( "Failed to connect to mongo", err ); }
-  console.log( 'connected to mongo' );
-});
 
-var Schema = mongoose.Schema;
-
-var UserSchema = new Schema({
-  twitterId : Number,
-  twitterProfile: Schema.Types.Mixed, /* generic twitter data */
-  twitterTokens: {
-    accessToken: String,
-    tokenSecret: String
-  },
-  followers: [],
-  lastFollowerUpdate: Number
-})
-
-
-UserSchema.statics.findOrCreateUser = function( profile, done ) {
-  var User = this;
-  User.findOne( { twitterId: profile.id },
-   function( error, userDoc ) {
-    if (error) { throw( "failed to find/create user", error ); }
-    if (userDoc === null) {
-      userDoc = new User();
-    }
-    userDoc.twitterProfile = profile;
-    userDoc.twitterId = profile.id;
-    userDoc.markModified('twitterProfile');
-    done (null, userDoc); 
-  });
-}
-
-UserSchema.statics.updateFollowers = function( id, followers, done) {
-  var User = this;
-  User.findById( id,
-   function( error, userDoc ) {
-    if (error) { throw( "failed to find/create user", error ); }
-    userDoc.followers = followers;
-    userDoc.markModified( 'followers' );
-    userDoc.lastFollowerUpdate = Date.now();
-    userDoc.save( function( err ) {
-      if (err) throw( "failed to update followers", err );
-      done ( null, userDoc ); 
-    })
-  });
-}
-var User = mongoose.model( 'user', UserSchema );
 
 
 /* configure the serialization and 
@@ -107,7 +54,7 @@ passport.deserializeUser(function(id, done) {
 });
 
 function verifyTwitterUser(accessToken, tokenSecret, profile, done) {
-  User.findOrCreateUser( profile , function( err, userDoc ) {
+  User.updateOrCreateUser( profile , function( err, userDoc ) {
     userDoc.twitterTokens.accessToken = accessToken;
     userDoc.twitterTokens.tokenSecret = tokenSecret;
     userDoc.save(function(error) {
@@ -239,13 +186,11 @@ app.post( '/timeToFetchFollowers',
 
             followers.push(follower);
           }
-          User.updateFollowers( 
-            request.user._id,
-            followers,
-            function( err, userDoc ) {
+          request.user.updateFollowers( followers,
+           function( err, userDoc ) {
               response.json( { 'followers': followers } );
               done();
-            });
+            });           
         });
       }
     ]);
