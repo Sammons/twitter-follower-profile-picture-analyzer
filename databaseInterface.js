@@ -4,11 +4,7 @@ var mongoose = require( 'mongoose' );
 /* secrets and tokens for applications, would be for database if weren't just a local thing */
 var credentials = require( './credentials.js' );
 
-/* hook up! */
-mongoose.connect( 'mongodb://localhost/test', function( err ) {
-  if ( err ) { throw ( "Failed to connect to mongo", err ); }
-  console.log( 'connected to mongo' );
-});
+
 
 var Schema = mongoose.Schema;
 
@@ -65,3 +61,11 @@ UserSchema.methods.updateFollowers = function( followers, done) {
 }
 
 module.exports.user = mongoose.model( 'user', UserSchema );
+
+/* hook up! */
+module.exports.connect = function( done ) {
+  mongoose.connect( 'mongodb://localhost/test', function( err ) {
+    if ( err ) { return done( err ); }
+    done( null );
+  });
+}
