@@ -3,8 +3,7 @@ var mongoose = require( 'mongoose' );
 
 /* secrets and tokens for applications, would be for database if weren't just a local thing */
 var credentials = require( './credentials.js' );
-
-
+var config = require( './config.js' );
 
 var Schema = mongoose.Schema;
 
@@ -64,7 +63,7 @@ module.exports.user = mongoose.model( 'user', UserSchema );
 
 /* hook up! */
 module.exports.connect = function( done ) {
-  mongoose.connect( 'mongodb://localhost/test', function( err ) {
+  mongoose.connect( config.mongoConnection, function( err ) {
     if ( err ) { return done( err ); }
     done( null );
   });

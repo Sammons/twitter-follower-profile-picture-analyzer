@@ -1,19 +1,5 @@
 /* server framework */
-var express         = require( 'express' );
-
-/* naive sessions (they don't use redis or anything cool) */
-var session         = require( 'express-session' );
-
-/* middleware that handles authentication */
-var passport        = require( 'passport'         ),
-    TwitterStrategy = require( 'passport-twitter' ).Strategy;
-
-/* middleware that parses requests */
-var cookieParser = require( 'cookie-parser'),
-    bodyParser   = require( 'body-parser'  );
-
-/* middleware that logs request details */
-var morgan = require( 'morgan' );
+var express = require( 'express' );
 
 /* tools */
 var async   = require('async'),
@@ -25,95 +11,44 @@ var async   = require('async'),
 var credentials = require( './credentials.js' );
 
 /* twitter api */
-var Twit = require('twit');
+var Twit = require( 'twit' );
 
+/* setting up sessions and passport middleware, as well as other
+  request parsing/ cookieparsing middleware.... it's all here */
+var appSetup = require( './appSetup.js' );
+ 
+/* database wrapper, for convenient loading and saving of user data */
+var db = require( './databaseInterface.js' );
+db.connect( function( err ) {
+  if ( err !== null ) {
+    throw( "Failed to connect to mongo!", err );
+  }
+  console.log( "connected to mongodb" );
+})
 
 /* initialize our application object */
 var app = express();
 
+/* inject the middleware into the stack */
+appSetup.injectMiddleware( app );
 
+/* add the passport routing for twitter authentication */
+appSetup.setupAuth( app );
 
-
-
-
-/* configure the serialization and 
-  deserialization of the passport user 
-  from the session. The session should contain
-  as little as possible and put everything else
-  in the database */
-passport.serializeUser( function( user, done ) {
-  done(null, user._id);
-});
-
-
-passport.deserializeUser(function(id, done) {
-  /* standard find the user and pull them out of the db, fare */
-  User.findById(id, function (err, user) {
-    done(err, user);
-  });
-});
-
-function verifyTwitterUser(accessToken, tokenSecret, profile, done) {
-  User.updateOrCreateUser( profile , function( err, userDoc ) {
-    userDoc.twitterTokens.accessToken = accessToken;
-    userDoc.twitterTokens.tokenSecret = tokenSecret;
-    userDoc.save(function(error) {
-      done( error, userDoc);
-    });
-  })
-}
-
-
-passport.use( 
-  new TwitterStrategy({
-      consumerKey: credentials.key,
-      consumerSecret: credentials.secret,
-      callbackURL: "http://127.0.0.1:3000/auth/twitter/callback"
-    },
-  verifyTwitterUser)
-);
-
-/* configure the app middleware */
-app.use( morgan('dev')            );/* first thing, log the request     */
-app.use( express.static('public') );/* asset serving                    */
-app.use( cookieParser()           );/* parse the cookie if there is one */
-app.use( bodyParser.json()        );/* parse the body if it is json     */
-
-app.use(session({ /* then load up the session into the request */
-  secret:            "keyboard mouse",
-  saveUninitialized:  true,
-  resave:             true
-}));
-
-app.use( passport.initialize() );/* inject the passport middleware here (after session and parsing stuff) */
-app.use( passport.session()    );/* convenient access to session.user data */
-
-app.get('/auth/twitter', passport.authenticate('twitter'));
-// GET /auth/twitter/callback
-// Use passport.authenticate() as route middleware to authenticate the
-// request. If authentication fails, the user will be redirected back to the
-// login page. Otherwise, the primary route function function will be called,
-// which, in this example, will redirect the user to the home page.
-app.get('/auth/twitter/callback',
-passport.authenticate('twitter', { failureRedirect: '/' }),
-function(req, res) {
-  res.redirect('/close');
-});
-
-
-/* simple templating */
+/* standard-style ejs templating */
 app.set('view engine', 'ejs');
 
-app.get('/close', function( request, response ) {
-  response.render( 'pageThatClosesImmediately' );
-})
-
-/* configure the page, since this is a single page app */
+/* configure the root since this is a "single page app",
+  pretty much everything else is an ajax request. */
 app.get( '/', function( request, response ) {
   response.render( 'index' );
 })
 
-
+/* custom middleware to detect if a request has
+  no authorized session to back it. In our case they
+  really can't have a req.user property unless they
+  are spoofing a session and fooling express-session,
+  or have authorized with twitter. */
 function ensureLoggedIn( req, res, next ) {
   if ( !req.user ) {
     console.log('stopped unauthorized request')
@@ -149,7 +84,7 @@ app.post( '/timeToFetchFollowers',
     , access_token_secret:  request.user.twitterTokens.tokenSecret
   })
 
-  if ( Date.now() - request.user.lastFollowerUpdate < 1000*60*5) {
+  if ( Date.now() - request.user.lastFollowerUpdate < config.ageToRetireFollowerCache ) {
     response.json( { 'followers': request.user.followers } );
     return;
   }
