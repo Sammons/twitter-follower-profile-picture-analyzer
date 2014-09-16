@@ -1,17 +1,32 @@
 var fs = require( 'fs' );
 var request = require( 'request' );
-var facepp = require( './facepp.js' );
+var async   = require('async'),
+    request = require('request'),
+    facepp  = require('./facepp.js'),
+    fs      = require('fs');
+/* twitter api */
+var Twit = require( 'twit' );
+
+/* secrets and tokens for applications, right now just twitter */
+var credentials = require( './credentials.js' );
+var config = require('./config.js');
+
+function createDirIfNotExistent( path, finished ) {
+  var exists = fs.existsSync(path); /* TODO MAKE ASYNC */
+  fs.mkdir( path, finished );
+}
 
 function downloadImage(path, follower, callback){
   var url = follower.profile_image_url;
   var type = '.' + url.match(/\.(jpg|png|jpeg)$/)[1];
-  var filename = path + follower.screen_name + type;
+  var filename = path + follower.id + type;
   request.head(url, function( err ){
     if (err) { throw( "problem downloading image", err ); }
     request(  url )
       .pipe( fs.createWriteStream( filename ) )
       .on( 'close', function() {  
-        callback();
+        follower.imagePath = filename;
+        callback( filename, follower );
       })
       .on( 'error', function() {
         console.log('writing image failed for', follower.screen_name );
@@ -20,98 +35,88 @@ function downloadImage(path, follower, callback){
 
 };
 
-function scrapeImages( path, followers, done ) {
+function processImages( path, followers, done ) {
   var count = followers.length;
   for (var i = 0; i < followers.length; i++) {
-    downloadImage( path, followers[i], function() {
-      count--;
-      if (count === 0) {
-        done();
-      }
+    downloadImage( path, followers[i],
+     function( filename, follower ) {
+      facepp.detectFace( filename,
+       function( err, res, data ) {
+          follower.data = data;
+          finished();
+          count--;
+          if (count === 0) {
+            done();
+          }
+        });
     })
   }
 }
 
-function deleteDirIfExists( path, done ) {
-  fs.exists( path, function( bool ) {
-        if (bool === true) {
-          fs.readdir( path, function( err, files ) {
-            if ( err ) { throw( "error reading files to clean imageCache", err ); }
-            var count = files.length;
-            for (var i = 0; i < files.length; i++) {
-              fs.unlink( path + files[i], function( err ) {
-                if ( err ) { throw( "error deleting file in cleaning imageCache", err ); }
-                count--;
-                if (count === 0) {
-                  fs.rmdir( path,function( err ) {
-                    if ( err ) throw( "error deleting cleaned directory when cleaning imageCach", err );
-                    done();
-                  })
-                }
-              })
-            }
-          })
-        } 
-        else {
-          done();
-        }
-      })
-}
-
-
-function analyzeFollowerProfileImages( user, finished ) {
+function processFollowers( followers, finished ) {
   var imageCacheDirPath = __dirname + '/imageCache/' + user._id + '/';
-  var analysis = [];
-  async.series([
-    function( done ) {
-      deleteDirIfExists( imageCacheDirPath, function() {
-        done();
-      });
-    },
-    function( done ) {
-      fs.mkdir( imageCacheDirPath,
-        function( err ) {
-          if ( err ) { throw( "failed to make user's image cache directory", err ); }
-          done();
+  async.waterfall([
+      function( done ) { 
+        createDirIfNotExistent( imageCacheDirPath, function( err ) {
+          if ( err ) { throw( "failed to create dir", err ); }
+          done( null );
+        }); 
+      },
+      function( done ) {
+        processImages( imageCacheDirPath, followers, function() {
+          done( followers );
         });
+      }
+    ], finished);
+}
+/* gather data on list of followers, saves to db before returning followers */
+function twitLookupFollowers( twit, user, ids, done ) {
+  var followers = [];
+  twit.get('users/lookup',
+    {
+      user_id: ids,
+      include_entities: false
     },
-    function( done ) {
-      scrapeImages( imageCacheDirPath, user.followers, function() {
-        done();
-      });
-    },
-    function( done ) {
-      fs.readdir( imageCacheDirPath, function( err, files ) {
-        if ( err ) { throw( "problem reading directory of image files to analyze", err ); }
-        var count = files.length;
-        var faceDetections = []
-        for ( var i in files ) {
-          var path = imageCacheDirPath + files[i];
-          faceDetections.push( ( function( path ) {
-            return function( finished ) {
-              facepp.detectFace( path, function( err, res, data ) {
-                analysis.push( data );
-                finished();
-              });
-            };
-          })( path ));
-        }
-        async.series( faceDetections, function() {
-          done();
-        })
-      });
-    },
-    function( done ) {
-      deleteDirIfExists( imageCacheDirPath, function() {
-        done();
-      });
-    }
-  ], function() {
-    finished( analysis );
-  });
+    function ( err, data, res) {
+      if ( err ) {
+        throw( "error acquiring user followers", err );
+      }
+      for (var i in data) {
+        var follower = {};
+        /* just get the data we want TODO: abstract this a bit */
+        follower.id                = data[i].id;
+        /* get the actual full size image url for better results */
+        follower.profile_image_url = data[i].profile_image_url.replace('_normal','');
+        follower.name              = data[i].name;
+        follower.screen_name       = data[i].screen_name;
+        followers.push(follower);
+      }
+      user.updateFollowers( followers,
+       function( err, userDoc ) {
+          if ( err ) {
+            throw ("error updating followers", err);
+          }
+          done( followers );
+        });           
+    });
 }
 
-function getFollowerData( user ) {
+/* get list of twitter followers' ids */
+function twitGetFollowerIds( twit, user, done ) {
+  twit.get('followers/ids',
+    { 
+      screen_name: user.twitterProfile.screen_name
+    },
+    function ( err, data, res ) {
+      if ( err ) {
+        throw( "error acquiring user followers", err );
+      }
+      done( data.ids );
+    });
+}
+
+/* asks twitter for fresh follower data, saves to db before returning */
+function refreshAllFollowerData( user, finished ) {
   var T = new Twit({
       consumer_key:         credentials.key
     , consumer_secret:      credentials.secret
@@ -120,7 +125,7 @@ function getFollowerData( user ) {
   })
 
   if ( Date.now() - user.lastFollowerUpdate < config.ageToRetireFollowerCache ) {
-    response.json( { 'followers': user.followers } );
+    finished( user.followers );
     return;
   }
 
@@ -128,43 +133,43 @@ function getFollowerData( user ) {
     to find them and put it in the database. */
   var followerIds = null;
   var followers = [];
-  async.series([
+  async.waterfall([
       function( done ) {
-        T.get('followers/ids',
-        { 
-          screen_name: user.twitterProfile.screen_name
-        },
-        function (err, data, res) {
-          //TODO handle err
-          followerIds = data.ids;
-          done();
-        });
+        twitGetFollowerIds( T, user, function( ids ) {
+          done( null, data.ids );
+        })
       },
-      function( done ) {
-        T.get('users/lookup',
-        {
-          user_id: followerIds,
-          include_entities: false
-        },
-        function ( err, data, res) {
-          for (var i in data) {
-            var follower = {};
-            follower.id                = data[i].id;
-            follower.profile_image_url = data[i].profile_image_url.replace('_normal','');
-            follower.name              = data[i].name;
-            follower.screen_name       = data[i].screen_name;
-
-            followers.push(follower);
-          }
-          user.updateFollowers( followers,
-           function( err, userDoc ) {
-              response.json( { 'followers': followers } );
-              done();
-            });           
-        });
+      function( ids, done ) {
+        twitLookupFollowers( T, user, ids, function() {
+          done( followers );
+        })  
       }
-    ]);
+    ], finished );
+}
+
+/* gathers fresh twitter data, then scrapes images and feeds through facepp */
+function analyzeFollowerProfileImages( user, done ) {
+  try {
+    async.waterfall([
+        function( done ) {
+          user.dataProcessingInProgress = true;
+          user.save();/* TODO: ENSURE FINISHES */
+          refreshAllFollowerData( user, function( followers ) {
+            done( null, followers );
+          })
+        },
+        function( followers, done ) {
+          processFollowers( followers, function( followersPostAnalysis ) {
+            user.updateFollowers( followersPostAnalysis, function( err ) {
+              done( err, followersPostAnalysis );
+            })
+          })
+        }
+      ], done);
+  } catch (e) {
+    return done( e, null )
+  }
 }
 
 module.exports.analyzeFollowerProfileImages = analyzeFollowerProfileImages;
-module.exports.getFollowerData = getFollowerData;
+module.exports.refreshAllFollowerData = refreshAllFollowerData;

@@ -82,7 +82,8 @@ module.exports.injectMiddleware = function( app ) {
   app.use(session({ /* then load up the session into the request */
     secret:             config.sessionSecret,
     saveUninitialized:  true,
-    resave:             true
+    resave:             true,
+    cookie: { path: '/', httpOnly: true, secure: false, maxAge: config.sessionMaxAge }
   }));
 
   app.use( passport.initialize() );/* inject the passport middleware here (after session and parsing stuff) */
@@ -92,7 +93,7 @@ module.exports.injectMiddleware = function( app ) {
     /* custom middleware to detect if there is a user session
       which indicates that they have logged in, assuming no session
       spoofing going on. 
-      
+
       TODO: We could save the last visited time in the serialize
       method, and require that visitors have their cookie say the same time
       as the database - otherwise have them re-login. */

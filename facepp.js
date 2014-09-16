@@ -1,13 +1,10 @@
 var credentials = require('./credentials.js'),
     request = require("request"),
-    fs = require('fs'),
-    path = require('path');
-
+    fs = require('fs')
+    
 module.exports.detectFace = function(path, callback) {
   url = "http://apius.faceplusplus.com/v2/detection/detect"
   var postRequest = request.post(url, {json: true}, function( err, res, data){
-    var screenName = path.match(/^.*\/(.*?)\..*?$/)[1];
-    data.screen_name = screenName;
     callback( err, res, data );
   })
   var type = '.' + path.match(/\.(jpg|png|jpeg)$/)[1];

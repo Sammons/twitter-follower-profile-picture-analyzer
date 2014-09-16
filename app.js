@@ -2,17 +2,7 @@
 var express = require( 'express' );
 
 /* tools */
-var async   = require('async'),
-    request = require('request'),
-    facepp  = require('./facepp.js'),
-    apiAdapter = require('./apiAdapter.js'),
-    fs      = require('fs');
-
-/* secrets and tokens for applications, right now just twitter */
-var credentials = require( './credentials.js' );
-
-/* twitter api */
-var Twit = require( 'twit' );
+var apiAdapter = require('./apiAdapter.js');
 
 /* setting up sessions and passport middleware, as well as other
   request parsing/ cookieparsing middleware.... it's all here */
@@ -41,8 +31,21 @@ app.set('view engine', 'ejs');
 
 /* configure the root since this is a "single page app",
   pretty much everything else is an ajax request. */
-app.get( '/', function( request, response ) {
-  response.render( 'index' );
+app.get( '/', function( req, res ) {
+  if ( req.authenticated ) {
+    req.user.needsToBeAnalyzed( function( err, bool ) {
+      if ( err ) { 
+      /* eat it, this is just an early trigger
+       for starting analysis and not critical */
+      }
+      if ( bool === true ) {
+        /* do not pass callback or even bother to wait on this,
+           it is a long-running thing */
+        apiAdapter.analyzeFollowerProfileImages( req.user );
+      }
+    })
+  }
+  res.render( 'index' );
 })
 
 /* custom middleware to detect if a request has
@@ -60,36 +63,71 @@ function ensureLoggedIn( req, res, next ) {
 }
 
 /* endpoints for ajax */
-app.get( '/profileData', function( request, response ) {
-  var responseJson = { data: null };
-  if ( !!request.user ) {
-    responseJson.data = request.user.twitterProfile._json;
-  }
-  response.json( responseJson );
+
+
+
+/* returns the json we have for the authenticated user's twitter profile */
+app.get( '/profileData',
+  ensureLoggedIn,
+   function( request, response ) {
+    response.json( request.user.twitterProfile._json );
 })
 
-
-var entitiesToGet = [
-    "name",
-    "screen_name",
-    "profile_image_url"
-    ]
-
+/* returns the analyzed follower data if any exists, this can be stale */
 app.get( '/getFollowerData',
  ensureLoggedIn,
   function( request, response) {
-    apiAdapter.getFollowerData( request.user, function() {
-
+    request.user.getFollowerData( function(err, followers, age) {
+      if ( err ) { 
+        response.json({ 'followersDataReady': false, 'followers': null, 'error': err });
+        throw( "error getting follower data", err );
+      }
+      if ( followers.length > 0 ) {
+        response.json({ 'followersDataReady': true, 'followers': followers, 'age': age });
+      }
+      else {
+        response.json({ 'followersDataReady': false, 'followers': [] });
+      }
     });
 })
 
-app.get( '/refreshUserAnalysis',
+/* allow the frontend to ping to see if the application is still alive */
+app.get( '/areYouProcessing',
+  ensureLoggedIn,
+    function( request, response ) {
+      request.user.areWeCurrentlyProcessing( function(err, bool) {
+        if ( err ) { 
+          /* Oof */
+          response.json({ processing: false,  error: err })
+          throw( "error detecting if processing already", err ) 
+        } 
+        response.json({ processing: bool });
+      })
+    });
+
+/* start re-processing the user's data, unless we already started again */
+app.post( '/refreshUserAnalysis',
  ensureLoggedIn,
   function( request, response ) {
-    apiAdapter.analyzeFollowerProfileImages( request.user,
-      function( analysis ) {
-        response.json( { data: analysis } );
-      });
+    request.user.areWeCurrentlyProcessing( function( err, bool ) {
+      if ( err ) { 
+        /* Oof */
+        response.json({ alreadyStarted: bool, started: false, error: err })
+        throw( "error detecting if processing already", err ) 
+      }
+      if ( bool === true ) {
+        /* already on it */
+        response.json({ alreadyStarted: bool, started: false })
+      } 
+      else if ( bool === false ) {
+        /* starting it now */
+        response.json({ alreadyStarted: bool, started: true })
+        apiAdapter.analyzeFollowerProfileImages( request.user,
+          function( analysis ) {
+            response.json( { data: analysis } );
+          });
+      }
+    });
 })
 
 /* start application */

@@ -19,11 +19,13 @@ var UserSchema = new Schema({
     tokenSecret: String
   },
   followers                : [],     /* empty array notation is mixed type    */
-  lastFollowerUpdate       : Number  /* used to avoid abusing twitter         */
-  lastFaceAnalysis         : Number  /* used to avoid abusing Face++          */
+  lastFollowerUpdate       : Number, /* used to avoid abusing twitter         */
+  lastFaceAnalysis         : {       /* used to avoid abusing Face++          */
+    type: Number, default: 0
+   },
   dataProcessingInProgress : {       /* used to avoid double-processing       */
-      type: Boolean, default: false 
-    } 
+    type: Boolean, default: false 
+   }, 
   lastVisited              : Number  /* just curious when they were here last */
 })
 
@@ -32,7 +34,7 @@ UserSchema.statics.updateTokensAndProfileOrCreateUser = function( user, done ) {
   var User = this;
 
   /* Find */
-  User.findOne( { 'twitterProfile.id' : profile.id },
+  User.findOne( { 'twitterProfile.id' : user.twitterProfile.id },
    function( error, userDoc ) {
     /* Oops */
     if (error) {
@@ -68,6 +70,40 @@ UserSchema.methods.updateFollowers = function( followers, done) {
   userDoc.save( function( err ) {
     done ( err, userDoc ); 
   });
+}
+
+UserSchema.methods.getFollowerData = function( done ) {
+  var user = this;
+  var User = module.exports.user;
+
+  /* get fresh copy of userdoc from the db, in case the user used is stale */
+  User.findById( user._id, function( err, userDoc ) {
+    done( err, userDoc.followers, userDoc.lastFaceAnalysis );
+  })
+}
+
+//request.user.areWeCurrentlyProcessing( function(err, bool) {
+UserSchema.methods.areWeCurrentlyProcessing = function( done ) {
+  var user = this;
+  var User = module.exports.user;
+  /* get fresh copy of userdoc from the db, in case the user used is stale */
+  User.findById( user._id, function( err, userDoc ) {
+    done( err, userDoc.dataProcessingInProgress );
+  }) 
+}
+UserSchema.methods.needsToBeAnalyzed = function( done ) {
+  var user = this;
+  var User = module.exports.user;
+  /* get fresh copy of userdoc from the db, in case the user used is stale */
+  User.findById( user._id, function( err, userDoc ) {
+    if ( userDoc.lastFaceAnalysis         === 0 
+     &&  userDoc.dataProcessingInProgress === false ) {
+      done( true );
+    }
+    else {
+      done( false );
+    }
+  })
 }
 
 /* expose the user model */
