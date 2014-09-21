@@ -33,123 +33,132 @@
     }
     loadPage();
 
-    function renderBannerNotLoggedIn() {
-      $banner.children('h1')
-        .text('You are not logged in.');
-      $banner.children('span')
-        .text('I really am sorry you have to authenticate. Don\'t worry, what comes next is totally worth it...');
+    function setHeader( text ) {
+      $banner.children('h1').text( text );
+    }
+    function setHeaderPhrase( text ) {
+      $banner.children('span').text( text );
+    }
+    function setHeaderLink( href, text, action ) {
       $banner.children('a')
-        .attr('href', '/auth/twitter')
-        .text('log in with twitter')
-        .click(function(e) {
-          e.preventDefault();
-          var popup = window.open('/auth/twitter',"");
-          window.onfocus = function(e) {
-            window.onfocus = null;
-            loadPage();
-          }
-        });
+        .attr('href', href)
+        .text(text)
+
+      if (action) {
+        $banner.children('a').click(action);
+      }
+    }
+    function toggleWait() {
+      $('body').toggleClass('wait');
+    }
+
+    /* handlers */
+    function handleAuthButtonClick(e) {
+      e.preventDefault();
+      var popup = window.open('/auth/twitter',"");
+      window.onfocus = function(e) {
+        window.onfocus = null;
+        loadPage();
+      }
+    }
+    /* **** */
+
+    function renderBannerNotLoggedIn() {
+      setHeader('You are not logged in.');
+      setHeaderPhrase('I really am sorry you have to authenticate. Don\'t worry, what comes next is totally worth it...');
+      setHeaderLink( '/auth/twitter',
+                      'log in with twitter',
+                         handleAuthButtonClick );
     }
 
     function renderBannerLoggedIn() {
-      console.log('render logged in')
-      $banner.children('h1')
-        .text('Welcome ' + userProfile.name)
-      $banner.children('span')
-        .text('Just a sec, fetching your follower\'s profile pictures...');
-      $banner.children('a')
-        .attr('href', '/logout')
-        .text('logout')
-        .click(function(e) {
-          e.preventDefault();
-          // ajax call to kill session
-          window.close();
-        })
-      if (!userProfile.followers) {
-        $.get('/getFollowerData', function( response, status ) {
-          userProfile.followers = response.followers;
-          console.log(userProfile.followers)
-          for (var i in userProfile.followers) {
-            constructFollower( userProfile.followers[i] );
-          }
-        })
+      setHeader('Welcome '+userProfile.name);
+      setHeaderLink( '/logout',
+                      'logout' );
+      if (checkForFollowerData()) {
+        renderFollowers();
       } else {
-        for (var i in userProfile.followers) {
-          constructFollower( userProfile.followers[i] );
+        getFollowerData(function( bool ) {
+          if ( bool ) {
+            renderFollowers();
+            calculateOverallStats();
+            renderOverallStats();
+          } 
+          else {
+            setTimeout( renderBannerLoggedIn, 750 );
+          }
+        });
+      }
+    }
+
+    function calculateOverallStats() {
+
+    }
+
+    function renderOverallStats() {
+
+    }
+
+    function checkForFollowerData() {
+      // hopefully the user has more than 0 followers...
+      return (userProfile.followers && userProfile.followers.length > 0);
+    }
+
+    function renderFollower( follower ) {
+      console.log(follower)
+      $followerContainer = $('<div/>');
+      $followerImg       = $('<img/>');
+      $followerData      = $('<ul/>');
+
+      $followerImg
+        .attr( 'src', follower.profile_image_url )
+        .attr( 'alt', 'Picture could not be found!' );
+
+      $followerData
+        .append( '<li> <b>name: </b>'+ follower.name +'</li>' )
+
+      if (follower.data.face
+        && follower.data.face.size == 1) {
+        console.log('yep')
+        $followerData.append( '<li> <b>race: </b>'+ follower.data.face[0].attribute.race.value +'</li>' )
+      }
+
+      $followerContainer
+        .append($followerImg)
+        .append($followerData)
+
+      $dashboard.append( $followerContainer );
+    }
+
+    function renderFollowers() {
+      $dashboard.children().remove();
+      for (var i in userProfile.followers) {
+        renderFollower( userProfile.followers[i] );
+      }
+    }
+
+    function getFollowerData( done ) {
+      $.get('/getFollowerData',function( data, success, response ) {
+        console.log(arguments)
+        if ( data.followersDataReady === true ) {
+          setHeaderPhrase('We have analyzed your followers!');
+          userProfile.followers = data.followers;
+          done( true );
+        } else if ( data.followersDataReady === false ) {
+          setHeaderPhrase('We are still processing your followers');
+          $.get('/areYouProcessing', function( data, success ) {
+            if (data.processing === false) {
+              $.post('/refreshUserAnalysis', function() {
+                done( false );
+              });
+            } else {
+              done( false );
+            }
+          })
+        } else {
+          setHeaderPhrase('Something went wrong checking for your follower-data. Please come back and try again in a few minutes.');
         }
-      }
-    }
-
-    function displayThisFollower( screen_name ) {
-      console.log( screen_name );
-    }
-
-    function generateSummary() {
-      // races
-      // ages
-      // genders
-    }
-
-    function getStatsListForFollower( analytics ) {
-
-    }
-
-    function constructFollower( follower ) {
-      var $div = $( '<div class="follower"></div>' )
-            .attr( 'id', follower.screen_name );
-
-      var $profile = $( '<img/>' )
-            .attr( 'src', follower.profile_image_url );
-
-      var $linkToProfile = $( '<a/>' )
-            .attr( 'href', 'https://twitter.com/' + follower.screen_name );
-
-      var $stats = $('<div class="stats"><ul></ul></div>')
-
-      $linkToProfile.append( $profile );
-      $div.append( $linkToProfile );
-      $div.append( $stats );
-      return $div;
-    }
-
-    function slideover( element ) {
-      $(element).animate({'width':'100px','padding-right':'100px'},100)
-    }
-    function slideback( element ) {
-      $(element).animate({'width':'200px','padding-right':'0px'},100)
-    }
-    function renderFollowerDemographics() {
-      /* recorrelating the data from face++ and twitter,
-        this code is a patch-up for a design flaw on the server
-        where the two sets of data are collected independently. */
-      userProfile.combinedData = {};
-      for ( var i in userProfile.analytics ) {
-        userProfile
-          .combinedData[ userProfile.analytics[ i ]
-            .screen_name ] = { analytics : userProfile.analytics[ i ] }
-      }
-      for ( var j in userProfile.followers ) {
-        userProfile
-          .combinedData[ userProfile.followers[ j ]
-            .screen_name ].follower = userProfile.followers[ j ];
-      }
-      /* append summary */
-
-
-      /* construct boxes for each follower */
-      for (var k in userProfile.combinedData ) {
-        var followerBox = constructFollower( 
-            userProfile.combinedData[ k ].follower,
-            userProfile.combinedData[ k ].analytics );
-        $dashboard.append(followerBox);
-      }
-      $('.follower')
-        .mouseenter(function(e) {
-          slideover($(this).children('a').children('img')[0]);
-        })
-        .mouseout(function(e) {
-          slideback($(this).children('a').children('img')[0]);
-        })
+      }) 
     }
 
 
