@@ -29,8 +29,8 @@ appSetup.setupAuth( app );
 /* standard-style ejs templating */
 app.set('view engine', 'ejs');
 
-/* configure the root since this is a "single page app",
-  pretty much everything else is an ajax request. */
+/* configure the root page,
+  most of everything else is an ajax request. */
 app.get( '/', function( req, res ) {
   if ( req.authenticated ) {
     req.user.needsToBeAnalyzed( function( err, bool ) {
@@ -89,11 +89,12 @@ app.get( '/getFollowerData',
         response.json({ 'followersDataReady': false, 'followers': null, 'error': err });
         throw( "error getting follower data", err );
       }
-      if ( followers.length > 0 ) {
+      var proccessedAlready = ( age !== 0 ? true : false );
+      if ( followers.length > 0 && proccessedAlready ) {
         response.json({ 'followersDataReady': true, 'followers': followers, 'age': age });
       }
       else {
-        response.json({ 'followersDataReady': false, 'followers': [] });
+        response.json({ 'followersDataReady': false, 'followers': followers });
       }
     });
 })
@@ -117,24 +118,25 @@ app.post( '/refreshUserAnalysis',
  ensureLoggedIn,
   function( request, response ) {
     request.user.areWeCurrentlyProcessing( function( err, bool ) {
+      response.json({ alreadyStarted: bool })
       if ( err ) { 
         /* Oof */
-        response.json({ alreadyStarted: bool, started: false, error: err })
         throw( "error detecting if processing already", err ) 
       }
-      if ( bool === true ) {
-        /* already on it */
-        response.json({ alreadyStarted: bool, started: false })
-      } 
-      else if ( bool === false ) {
+      if ( bool === false ) {
         /* starting it now */
-        response.json({ alreadyStarted: bool, started: true })
         apiAdapter.analyzeFollowerProfileImages( request.user,
           function( analysis ) {
-            response.json( { data: analysis } );
+            request.user.lastFaceAnalysis = Date.now();
+            request.user.save();
           });
       }
     });
+})
+
+app.get( '/logout', function( request, response ) {
+  request.logout();
+  response.redirect('/');
 })
 
 /* start application */

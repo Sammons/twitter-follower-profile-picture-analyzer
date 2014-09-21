@@ -11,67 +11,37 @@ var Twit = require( 'twit' );
 var credentials = require( './credentials.js' );
 var config = require('./config.js');
 
-function createDirIfNotExistent( path, finished ) {
-  var exists = fs.existsSync(path); /* TODO MAKE ASYNC */
-  if (!exists) fs.mkdir( path, finished );
+var followersToProcess = [];
+function processImage( done ) {
+  if (followersToProcess.length == 0) {
+    done();
+    return;
+  } 
+  var follower = followersToProcess.pop();
+  facepp.detectFace( follower.profile_image_url,
+   function( err, res, data ) {
+      follower.data = data;
+      processImage( done );
+    });
 }
 
-function downloadImage(path, follower, callback){
-  console.log('downloading image')
-  var url = follower.profile_image_url;
-  var type = '.' + url.match(/\.(jpg|png|jpeg)$/)[1];
-  var filename = path + follower.id + type;
-  follower.imagePath = filename;
-  if (fs.existsSync(filename)) return callback( filename, follower );
-  console.log('filename')
-  request.head(url, function( err ){
-    if (err) { throw( "problem downloading image", err ); }
-    request(  url )
-      .pipe( fs.createWriteStream( filename ) )
-      .on( 'close', function() {  
-        callback( filename, follower );
-      })
-      .on( 'error', function() {
-        console.log('writing image failed for', follower.screen_name );
-      })
-  });
-
-};
-
-function processImages( path, followers, done ) {
+function processImages( followers, done ) {
   console.log('processing images', arguments)
   var count = followers.length;
+  /* queue up followers */
   for (var i = 0; i < followers.length; i++) {
-    downloadImage( path, followers[i],
-     function( filename, thisfollower ) {
-      facepp.detectFace( filename,
-       function( err, res, data ) {
-          thisfollower.data = data;
-          count--;
-          if (count === 0) {
-            done( followers );
-          }
-        });
-    })
+    followersToProcess.push( followers[i] );
   }
+  /* initiate the draining of the q */
+  processImage(function() {
+    done( followers );
+  })
 }
 
 function processFollowers( user, followers, finished ) {
-  var imageCacheDirPath = __dirname + '/imageCache/' + user._id + '/';
-  async.waterfall([
-      function( done ) { 
-        createDirIfNotExistent( imageCacheDirPath, function( err ) {
-          if ( err ) { throw( "failed to create dir", err ); }
-          done( null );
-        }); 
-      },
-      function( done ) {
-        console.log('begin processing images <pre>')
-        processImages( imageCacheDirPath, followers, function() {
-          done( followers );
-        });
-      }
-    ], finished);
+  processImages( followers, function( processedFollowers) {
+    finished( processedFollowers );
+  });
 }
 /* gather data on list of followers, saves to db before returning followers */
 function twitLookupFollowers( twit, user, ids, done ) {
